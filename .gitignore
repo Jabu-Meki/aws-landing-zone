@@ -1,0 +1,19 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+terraform.tfvars
+terraform.tfvars.json
+.terraform.lock.hcl
+
+# Local files
+*.log
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Credentials
+credentials
+*.pem
