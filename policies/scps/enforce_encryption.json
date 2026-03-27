@@ -1,0 +1,20 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "EnforceEncryption",
+            "Effect": "Deny",
+            "Action": [
+                "s3:PutObject",
+                "ec2:CreateVolume",
+                "rds:CreateDBInstance"
+            ],
+            "Resource": "*",
+            "Condition": {
+                "BoolIfExists": {
+                    "aws:SecureTransport": "false"
+                }
+            }
+        }
+    ]
+}
