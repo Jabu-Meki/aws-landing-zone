@@ -87,10 +87,10 @@ resource "aws_organizations_policy" "restrict_root_user" {
 }
 
 # SCP 6: Prevent deleting IAM Roles
-resource "aws_organizations_policy" "prevent_deleting_iam_roles" {
+resource "aws_organizations_policy" "prevent_delete_iam_roles" {
   name        = "PreventDeletingIAMRoles"
   description = "Prevents member accounts from deleting IAM Roles"
-  content     = file("policies/scps/prevent_deleting_iam_roles.json")
+  content     = file("policies/scps/prevent_delete_iam_roles.json")
   type        = "SERVICE_CONTROL_POLICY"
 }
 

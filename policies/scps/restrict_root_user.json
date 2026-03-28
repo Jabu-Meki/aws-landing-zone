@@ -9,10 +9,12 @@
             ],
             "Resource": "*",
             "Condition": {
-                "aws:PrincipalIsAWSService": "false"
-            },
-            "StringLike": {
-                "aws:PrincipalArn": "arn:aws:iam::*:root"
+                "Bool": {
+                    "aws:PrincipalIsAWSService": "false"
+                },
+                "StringLike": {
+                    "aws:PrincipalArn": "arn:aws:iam::*:root"
+                }
             }
         }
     ]
