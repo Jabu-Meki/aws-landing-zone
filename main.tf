@@ -122,18 +122,51 @@ resource "aws_organizations_policy_attachment" "enforce_encryption_workloads" {
   target_id = aws_organizations_organizational_unit.workloads.id
 }
 
+# Member Accounts
 
+# Security OU Accounts
+resource "aws_organizations_account" "audit" {
+  name      = "AuditAccount"
+  email     = "jabulanimeki+audit@outlook.com"
+  parent_id = aws_organizations_organizational_unit.security.id
 
+  tags = {
+    Purpose = "Central logging and audit storage"
+  }
+}
 
+resource "aws_organizations_account" "security_tools" {
+  name      = "SecurityToolsAccount"
+  email     = "jabulanimeki+security@outlook.com"
+  parent_id = aws_organizations_organizational_unit.security.id
 
+  tags = {
+    Purpose = "GuardDuty Security Hub threat detection"
+  }
+}
 
+# Workloads OU Accounts
+resource "aws_organizations_account" "dev" {
+  name      = "DevelopmentAccount"
+  email     = "jabulanimeki+dev@outlook.com"
+  parent_id = aws_organizations_organizational_unit.workloads.id
 
+  tags = {
+    Purpose     = "Development and testing workloads"
+    Environment = "dev"
+  }
+}
 
+resource "aws_organizations_account" "prod" {
+  name      = "ProductionAccount"
+  email     = "jabulanimeki+prod@outlook.com"
+  parent_id = aws_organizations_organizational_unit.workloads.id
 
-
-
-
-
+  tags = {
+    Purpose     = "Production customer workloads"
+    Environment = "prod"
+  }
+}
 
 # Attach region restriction SCP to Workloads OU
 resource "aws_organizations_policy_attachment" "deny_regions_workloads" {
@@ -147,4 +180,137 @@ resource "aws_organizations_policy_attachment" "deny_regions_workloads" {
   ]
 }
 
+data "aws_caller_identity" "current" {}
+provider "aws" {
+  alias   = "audit"
+  region  = "us-east-1"
+  profile = "management"
 
+  assume_role {
+    role_arn = "arn:aws:iam::${aws_organizations_account.audit.id}:role/OrganizationAccountAccessRole"
+  }
+}
+
+# Central Logging (Audit Account)
+resource "aws_s3_bucket" "central_logs" {
+  provider = aws.audit
+  bucket   = "cental-logs-${aws_organizations_account.audit.id}"
+
+  force_destroy = true
+}
+
+# Enabling versioning
+resource "aws_s3_bucket_versioning" "central_logs" {
+  provider = aws.audit
+  bucket   = aws_s3_bucket.central_logs.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+# Blocking public access
+resource "aws_s3_bucket_public_access_block" "central_logs" {
+  provider = aws.audit
+  bucket   = aws_s3_bucket.central_logs.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+# Bucket policy allowing CloudTrail from all accounts
+resource "aws_s3_bucket_policy" "central_logs" {
+  provider = aws.audit
+  bucket   = aws_s3_bucket.central_logs.id
+  policy   = data.aws_iam_policy_document.central_logs.json
+}
+
+data "aws_iam_policy_document" "central_logs" {
+  statement {
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["cloudtrail.amazonaws.com"]
+    }
+
+    actions   = ["s3:GetBucketAcl"]
+    resources = [aws_s3_bucket.central_logs.arn]
+  }
+
+  statement {
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["cloudtrail.amazonaws.com"]
+    }
+
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.central_logs.arn}/AWSLogs/${data.aws_caller_identity.current.account_id}/*"]
+    condition {
+      test     = "StringEquals"
+      variable = "s3:x-amz-acl"
+      values   = ["bucket-owner-full-control"]
+    }
+  }
+
+  statement {
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["cloudtrail.amazonaws.com"]
+    }
+
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.central_logs.arn}/AWSLogs/${aws_organizations_organization.main.id}/*"]
+    condition {
+      test     = "StringEquals"
+      variable = "s3:x-amz-acl"
+      values   = ["bucket-owner-full-control"]
+    }
+  }
+
+  statement {
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["config.amazonaws.com"]
+    }
+
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.central_logs.arn}/AWSLogs/*"]
+  }
+
+  statement {
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["guardduty.amazonaws.com"]
+    }
+
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.central_logs.arn}/GuardDuty/*"]
+  }
+}
+
+# Organization cloudtrail (management account)
+resource "aws_cloudtrail" "organization" {
+  name                          = "organization-trail"
+  s3_bucket_name                = aws_s3_bucket.central_logs.bucket
+  include_global_service_events = true
+  is_multi_region_trail         = true
+  enable_log_file_validation    = true
+  is_organization_trail         = true
+
+  depends_on = [aws_s3_bucket_policy.central_logs]
+}
+
+output "cloudtrail_arn" {
+  value = aws_cloudtrail.organization.arn
+}

@@ -36,4 +36,40 @@ output "scp_attachments" {
   }
 }
 
+# Add to your outputs section
 
+output "member_accounts" {
+  description = "All member accounts with their IDs"
+  value = {
+    audit          = aws_organizations_account.audit.id
+    security_tools = aws_organizations_account.security_tools.id
+    dev            = aws_organizations_account.dev.id
+    prod           = aws_organizations_account.prod.id
+  }
+}
+
+output "member_account_emails" {
+  description = "Member account emails (sensitive)"
+  value = {
+    audit          = aws_organizations_account.audit.email
+    security_tools = aws_organizations_account.security_tools.email
+    dev            = aws_organizations_account.dev.email
+    prod           = aws_organizations_account.prod.email
+  }
+  sensitive = true
+}
+
+output "central_logs_bucket" {
+  description = "Central S3 bucket for all logs"
+  value       = aws_s3_bucket.central_logs.id
+}
+
+#output "cloudtrail_arn" {
+#description = "Organization CloudTrail ARN"
+#value       = aws_cloudtrail.organization.arn
+#}
+
+#output "config_aggregator_name" {
+# description = "AWS Config aggregator name"
+# value       = aws_config_configuration_aggregator.organization.name
+#}
