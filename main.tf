@@ -9,28 +9,55 @@ terraform {
   }
 }
 
+locals {
+  management_region = "us-east-1"
+
+  organizations_service_access_principals = [
+    "cloudtrail.amazonaws.com",
+    "config.amazonaws.com",
+    "guardduty.amazonaws.com",
+    "securityhub.amazonaws.com"
+  ]
+
+  service_principals = {
+    cloudtrail = "cloudtrail.amazonaws.com"
+    config     = "config.amazonaws.com"
+    guardduty  = "guardduty.amazonaws.com"
+  }
+
+  audit_bucket_name = "cental-logs-${aws_organizations_account.audit.id}"
+}
+
 provider "aws" {
-  region  = "us-east-1"
+  region  = local.management_region
   profile = "management"
 }
 
+data "aws_caller_identity" "current" {}
+
+data "aws_iam_policy_document" "config_service_assume_role" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "Service"
+      identifiers = [local.service_principals.config]
+    }
+  }
+}
+
+# Organization
 resource "aws_organizations_organization" "main" {
   feature_set = "ALL"
   enabled_policy_types = [
     "SERVICE_CONTROL_POLICY"
   ]
 
-  aws_service_access_principals = [
-    "cloudtrail.amazonaws.com",
-    "config.amazonaws.com",
-    "guardduty.amazonaws.com",
-    "securityhub.amazonaws.com"
-  ]
+  aws_service_access_principals = local.organizations_service_access_principals
 }
 
-
-
-# ORGANIZATION UNITS (OUs)
+# Organizational Units
 resource "aws_organizations_organizational_unit" "security" {
   name      = "Security"
   parent_id = aws_organizations_organization.main.roots[0].id
@@ -46,7 +73,7 @@ resource "aws_organizations_organizational_unit" "workloads" {
   parent_id = aws_organizations_organization.main.roots[0].id
 }
 
-# SCP 1: Deny access to unapproved regions
+# Service Control Policies
 resource "aws_organizations_policy" "deny_unapproved_regions" {
   name        = "DenyUnapprovedRegions"
   description = "Denies access to all regions except us-east-1, eu-west-1 and af-south-1"
@@ -54,7 +81,6 @@ resource "aws_organizations_policy" "deny_unapproved_regions" {
   type        = "SERVICE_CONTROL_POLICY"
 }
 
-# SCP 2: Prevent leaving org
 resource "aws_organizations_policy" "prevent_leaving_org" {
   name        = "PreventLeavingOrganization"
   description = "Prevents member accounts from leaving the organization"
@@ -62,7 +88,6 @@ resource "aws_organizations_policy" "prevent_leaving_org" {
   type        = "SERVICE_CONTROL_POLICY"
 }
 
-# scp 3: Prevent disabling CloudTrail
 resource "aws_organizations_policy" "prevent_disable_cloudtrail" {
   name        = "PreventDisableCloudTrail"
   description = "Prevents member accounts from disabling CloudTrail"
@@ -70,7 +95,6 @@ resource "aws_organizations_policy" "prevent_disable_cloudtrail" {
   type        = "SERVICE_CONTROL_POLICY"
 }
 
-# SCP 4: Enforce encryption
 resource "aws_organizations_policy" "enforce_encryption" {
   name        = "EnforceEncryption"
   description = "Enforces encryption for supported services"
@@ -78,7 +102,6 @@ resource "aws_organizations_policy" "enforce_encryption" {
   type        = "SERVICE_CONTROL_POLICY"
 }
 
-# SCP 5: Restrict root user
 resource "aws_organizations_policy" "restrict_root_user" {
   name        = "RestrictRootUser"
   description = "Restricts the use of the root user"
@@ -86,7 +109,6 @@ resource "aws_organizations_policy" "restrict_root_user" {
   type        = "SERVICE_CONTROL_POLICY"
 }
 
-# SCP 6: Prevent deleting IAM Roles
 resource "aws_organizations_policy" "prevent_delete_iam_roles" {
   name        = "PreventDeletingIAMRoles"
   description = "Prevents member accounts from deleting IAM Roles"
@@ -94,7 +116,7 @@ resource "aws_organizations_policy" "prevent_delete_iam_roles" {
   type        = "SERVICE_CONTROL_POLICY"
 }
 
-# Attach to ROOT (applies to all accounts)
+# SCP Attachments
 resource "aws_organizations_policy_attachment" "prevent_leaving_org_root" {
   policy_id = aws_organizations_policy.prevent_leaving_org.id
   target_id = aws_organizations_organization.main.roots[0].id
@@ -110,21 +132,17 @@ resource "aws_organizations_policy_attachment" "prevent_delete_iam_roles_root" {
   target_id = aws_organizations_organization.main.roots[0].id
 }
 
-# Attach to SECURITY OU
 resource "aws_organizations_policy_attachment" "restrict_root_user_security" {
   policy_id = aws_organizations_policy.restrict_root_user.id
   target_id = aws_organizations_organizational_unit.security.id
 }
 
-# Attach to WORKLOADS OU
 resource "aws_organizations_policy_attachment" "enforce_encryption_workloads" {
   policy_id = aws_organizations_policy.enforce_encryption.id
   target_id = aws_organizations_organizational_unit.workloads.id
 }
 
 # Member Accounts
-
-# Security OU Accounts
 resource "aws_organizations_account" "audit" {
   name      = "AuditAccount"
   email     = "jabulanimeki+audit@outlook.com"
@@ -145,7 +163,6 @@ resource "aws_organizations_account" "security_tools" {
   }
 }
 
-# Workloads OU Accounts
 resource "aws_organizations_account" "dev" {
   name      = "DevelopmentAccount"
   email     = "jabulanimeki+dev@outlook.com"
@@ -168,7 +185,6 @@ resource "aws_organizations_account" "prod" {
   }
 }
 
-# Attach region restriction SCP to Workloads OU
 resource "aws_organizations_policy_attachment" "deny_regions_workloads" {
   policy_id = aws_organizations_policy.deny_unapproved_regions.id
   target_id = aws_organizations_organizational_unit.workloads.id
@@ -180,10 +196,10 @@ resource "aws_organizations_policy_attachment" "deny_regions_workloads" {
   ]
 }
 
-data "aws_caller_identity" "current" {}
+# Audit Account Access
 provider "aws" {
   alias   = "audit"
-  region  = "us-east-1"
+  region  = local.management_region
   profile = "management"
 
   assume_role {
@@ -191,15 +207,14 @@ provider "aws" {
   }
 }
 
-# Central Logging (Audit Account)
+# Audit Logging
 resource "aws_s3_bucket" "central_logs" {
   provider = aws.audit
-  bucket   = "cental-logs-${aws_organizations_account.audit.id}"
+  bucket   = local.audit_bucket_name
 
   force_destroy = true
 }
 
-# Enabling versioning
 resource "aws_s3_bucket_versioning" "central_logs" {
   provider = aws.audit
   bucket   = aws_s3_bucket.central_logs.id
@@ -209,7 +224,6 @@ resource "aws_s3_bucket_versioning" "central_logs" {
   }
 }
 
-# Blocking public access
 resource "aws_s3_bucket_public_access_block" "central_logs" {
   provider = aws.audit
   bucket   = aws_s3_bucket.central_logs.id
@@ -220,7 +234,6 @@ resource "aws_s3_bucket_public_access_block" "central_logs" {
   restrict_public_buckets = true
 }
 
-# Bucket policy allowing CloudTrail from all accounts
 resource "aws_s3_bucket_policy" "central_logs" {
   provider = aws.audit
   bucket   = aws_s3_bucket.central_logs.id
@@ -233,7 +246,7 @@ data "aws_iam_policy_document" "central_logs" {
 
     principals {
       type        = "Service"
-      identifiers = ["cloudtrail.amazonaws.com"]
+      identifiers = [local.service_principals.cloudtrail]
     }
 
     actions   = ["s3:GetBucketAcl"]
@@ -245,7 +258,7 @@ data "aws_iam_policy_document" "central_logs" {
 
     principals {
       type        = "Service"
-      identifiers = ["cloudtrail.amazonaws.com"]
+      identifiers = [local.service_principals.cloudtrail]
     }
 
     actions   = ["s3:PutObject"]
@@ -262,7 +275,7 @@ data "aws_iam_policy_document" "central_logs" {
 
     principals {
       type        = "Service"
-      identifiers = ["cloudtrail.amazonaws.com"]
+      identifiers = [local.service_principals.cloudtrail]
     }
 
     actions   = ["s3:PutObject"]
@@ -279,7 +292,22 @@ data "aws_iam_policy_document" "central_logs" {
 
     principals {
       type        = "Service"
-      identifiers = ["config.amazonaws.com"]
+      identifiers = [local.service_principals.config]
+    }
+
+    actions = [
+      "s3:GetBucketAcl",
+      "s3:ListBucket"
+    ]
+    resources = [aws_s3_bucket.central_logs.arn]
+  }
+
+  statement {
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = [local.service_principals.config]
     }
 
     actions   = ["s3:PutObject"]
@@ -291,7 +319,7 @@ data "aws_iam_policy_document" "central_logs" {
 
     principals {
       type        = "Service"
-      identifiers = ["guardduty.amazonaws.com"]
+      identifiers = [local.service_principals.guardduty]
     }
 
     actions   = ["s3:PutObject"]
@@ -299,7 +327,7 @@ data "aws_iam_policy_document" "central_logs" {
   }
 }
 
-# Organization cloudtrail (management account)
+# Organization CloudTrail
 resource "aws_cloudtrail" "organization" {
   name                          = "organization-trail"
   s3_bucket_name                = aws_s3_bucket.central_logs.bucket
@@ -311,6 +339,49 @@ resource "aws_cloudtrail" "organization" {
   depends_on = [aws_s3_bucket_policy.central_logs]
 }
 
-output "cloudtrail_arn" {
-  value = aws_cloudtrail.organization.arn
+# AWS Config
+resource "aws_iam_role" "config" {
+  name               = "AWSConfigRole"
+  assume_role_policy = data.aws_iam_policy_document.config_service_assume_role.json
+}
+
+resource "aws_iam_role_policy_attachment" "config" {
+  role       = aws_iam_role.config.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWS_ConfigRole"
+}
+
+resource "aws_config_configuration_recorder" "main" {
+  name     = "central-recorder"
+  role_arn = aws_iam_role.config.arn
+
+  recording_group {
+    all_supported                 = true
+    include_global_resource_types = true
+  }
+}
+
+resource "aws_config_delivery_channel" "main" {
+  name           = "central-channel"
+  s3_bucket_name = aws_s3_bucket.central_logs.bucket
+
+  depends_on = [aws_config_configuration_recorder.main]
+}
+
+resource "aws_iam_role" "config_aggregator" {
+  name               = "AWSConfigAggregatorRole"
+  assume_role_policy = data.aws_iam_policy_document.config_service_assume_role.json
+}
+
+resource "aws_iam_role_policy_attachment" "config_aggregator" {
+  role       = aws_iam_role.config_aggregator.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSConfigRoleForOrganizations"
+}
+
+resource "aws_config_configuration_aggregator" "organization" {
+  name = "organization-aggregator"
+
+  organization_aggregation_source {
+    all_regions = true
+    role_arn    = aws_iam_role.config_aggregator.arn
+  }
 }

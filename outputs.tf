@@ -4,16 +4,16 @@ output "organization_id" {
 }
 
 output "organizational_units" {
-  description = "All OUs with thier IDs"
+  description = "Organizational unit IDs"
   value = {
-    security       = aws_organizations_organizational_unit.security.id,
-    infrastructure = aws_organizations_organizational_unit.infrastructure.id,
+    security       = aws_organizations_organizational_unit.security.id
+    infrastructure = aws_organizations_organizational_unit.infrastructure.id
     workloads      = aws_organizations_organizational_unit.workloads.id
   }
 }
 
 output "scp_ids" {
-  description = "All SCPs with their IDs"
+  description = "Service control policy IDs"
   value = {
     deny_unapproved_regions    = aws_organizations_policy.deny_unapproved_regions.id
     prevent_leaving_org        = aws_organizations_policy.prevent_leaving_org.id
@@ -24,22 +24,8 @@ output "scp_ids" {
   }
 }
 
-output "scp_attachments" {
-  description = "Where each SCP is attached"
-  value = {
-    prevent_leaving_org        = "Root (all accounts)"
-    prevent_disable_cloudtrail = "Root (all accounts)"
-    prevent_delete_iam_roles   = "Root (all accounts)"
-    deny_unapproved_regions    = "Workloads OU"
-    enforce_encryption         = "Workloads OU"
-    restrict_root_user         = "Security OU"
-  }
-}
-
-# Add to your outputs section
-
 output "member_accounts" {
-  description = "All member accounts with their IDs"
+  description = "Member account IDs"
   value = {
     audit          = aws_organizations_account.audit.id
     security_tools = aws_organizations_account.security_tools.id
@@ -49,7 +35,7 @@ output "member_accounts" {
 }
 
 output "member_account_emails" {
-  description = "Member account emails (sensitive)"
+  description = "Member account emails"
   value = {
     audit          = aws_organizations_account.audit.email
     security_tools = aws_organizations_account.security_tools.email
@@ -60,16 +46,16 @@ output "member_account_emails" {
 }
 
 output "central_logs_bucket" {
-  description = "Central S3 bucket for all logs"
+  description = "Central S3 bucket used for organization logs"
   value       = aws_s3_bucket.central_logs.id
 }
 
-#output "cloudtrail_arn" {
-#description = "Organization CloudTrail ARN"
-#value       = aws_cloudtrail.organization.arn
-#}
+output "cloudtrail_arn" {
+  description = "Organization CloudTrail ARN"
+  value       = aws_cloudtrail.organization.arn
+}
 
-#output "config_aggregator_name" {
-# description = "AWS Config aggregator name"
-# value       = aws_config_configuration_aggregator.organization.name
-#}
+output "config_aggregator_name" {
+  description = "AWS Config organization aggregator name"
+  value       = aws_config_configuration_aggregator.organization.name
+}
