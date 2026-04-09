@@ -1,0 +1,17 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "PreventDisableConfig",
+      "Effect": "Deny",
+      "Action": [
+        "config:DeleteConfigurationRecorder",
+        "config:StopConfigurationRecorder",
+        "config:DeleteDeliveryChannel",
+        "config:DeleteConfigRule",
+        "config:DeleteEvaluationResults"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

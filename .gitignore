@@ -3,12 +3,25 @@
 *.tfstate
 *.tfstate.*
 terraform.tfvars
+*.auto.tfvars
 terraform.tfvars.json
 .terraform.lock.hcl
+*.tfplan
+*.tfplan.*
+*.plan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
 
 # Local files
 *.log
 .DS_Store
+.env
+.env.*
+*.local
 
 # IDE
 .vscode/
@@ -17,3 +30,13 @@ terraform.tfvars.json
 # Credentials
 credentials
 *.pem
+*.key
+*.p12
+*.pfx
+*.cer
+*.crt
+*.csr
+*.pub
+
+# Tooling
+.codex

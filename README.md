@@ -2,294 +2,265 @@
 
 ## Overview
 
-This project provisions a foundational AWS landing zone using Terraform. It is designed to bootstrap an AWS Organization, create a basic organizational structure, apply service control policies (SCPs), create a small set of member accounts, and configure centralized logging and configuration visibility.
+This repository provisions a Terraform-based AWS landing zone for an AWS Organization. It is designed to establish a clean governance baseline, create core organizational structure, provision member accounts, and prepare centralized security and logging services.
 
-The current implementation uses:
+The project is intentionally organized as a reusable module-based implementation rather than a single flat Terraform file. It is aimed at demonstrating practical cloud platform engineering patterns:
 
-- AWS Organizations for account and OU management
-- Service Control Policies for baseline governance
-- An audit account for centralized log storage
-- AWS CloudTrail for organization-wide event logging
-- AWS Config for configuration recording and organization aggregation
+- organization-aware infrastructure design
+- governance with Service Control Policies
+- account provisioning through AWS Organizations
+- cross-account access with assumed roles
+- centralized logging and security service onboarding
 
-This repository is best understood as a practical landing-zone starter rather than a full enterprise landing-zone framework.
+## What This Project Delivers
 
-## What This Project Creates
+The current implementation is built around five functional areas:
 
-At a high level, the Terraform configuration in `main.tf` creates the following:
+- `organization`
+  Creates or reuses an AWS Organization and provisions the core OU structure.
+- `accounts`
+  Creates the member accounts used by the landing zone.
+- `scp`
+  Creates and attaches governance guardrails through Service Control Policies.
+- `logging`
+  Provisions centralized S3-based audit logging and an organization CloudTrail trail.
+- `security`
+  Provisions GuardDuty, AWS Config, and baseline AWS Config rules across member accounts.
 
-- An AWS Organization with `ALL` features enabled
-- Three Organizational Units:
-  - `Security`
-  - `Infrastructure`
-  - `Workloads`
-- Several Service Control Policies stored under `policies/scps`
-- SCP attachments at the root and OU levels
-- Four AWS member accounts:
-  - `AuditAccount`
-  - `SecurityToolsAccount`
-  - `DevelopmentAccount`
-  - `ProductionAccount`
-- A centralized S3 log bucket in the audit account
-- An organization CloudTrail trail
-- AWS Config recorder, delivery channel, and configuration aggregator
+## Current Architecture
 
-## Architecture Summary
+The root configuration in [main.tf](/home/jabu/Documents/AWS-Projects/aws-landing-zone/main.tf) coordinates a two-stage operating model:
 
-The intended architecture is:
+1. Organization and governance bootstrap
+   - reuse or create the organization
+   - create organizational units
+   - create member accounts
+   - apply SCP guardrails
+2. Cross-account security and logging enablement
+   - assume into the member accounts
+   - create centralized logging resources
+   - enable CloudTrail
+   - enable GuardDuty
+   - enable AWS Config and baseline Config rules
 
-1. The management account owns the AWS Organization and creates the OU structure.
-2. Guardrails are enforced with SCPs at the root and OU levels.
-3. The `AuditAccount` acts as the central destination for logs.
-4. The management account assumes into the audit account using `OrganizationAccountAccessRole`.
-5. CloudTrail delivers organization-level logs into the audit account S3 bucket.
-6. AWS Config records configuration changes and aggregates organization-wide visibility.
-
-This gives you a clean separation between governance, workloads, and centralized visibility.
+This structure reflects a real-world constraint of AWS Organizations: account creation can complete before every target AWS service is fully usable in the new accounts.
 
 ## Organizational Structure
 
-The current OU layout is:
+The project provisions or manages the following OU layout:
 
 - `Security`
-  - `AuditAccount`
-  - `SecurityToolsAccount`
 - `Infrastructure`
-  - No account is currently created here in the active configuration
 - `Workloads`
-  - `DevelopmentAccount`
-  - `ProductionAccount`
 
-## Service Control Policies Included
+The current account model is intentionally simple:
 
-The following SCPs are currently managed by Terraform:
+- `AuditAccount`
+- `WorkloadAccount`
 
-- `DenyUnapprovedRegions`
-  - Restricts activity to approved AWS regions
-- `PreventLeavingOrganization`
-  - Prevents accounts from leaving the organization
-- `PreventDisableCloudTrail`
-  - Prevents CloudTrail from being disabled
-- `EnforceEncryption`
-  - Adds encryption-related restrictions for selected services
-- `RestrictRootUser`
-  - Restricts use of the root user
-- `PreventDeletingIAMRoles`
-  - Prevents deletion of IAM roles
+This keeps the landing-zone footprint small while still demonstrating multi-account governance and cross-account operations.
 
-These policies are defined as JSON files under `policies/scps`.
+## Governance Controls
 
-## Files and Project Layout
+The repository includes SCP documents under [policies/scps](/home/jabu/Documents/AWS-Projects/aws-landing-zone/policies/scps) and applies governance controls through the `scp` module.
 
-- `main.tf`
-  - Main Terraform configuration for organization, accounts, SCPs, logging, and Config
-- `outputs.tf`
-  - Outputs for organization IDs, OU IDs, SCP IDs, account IDs, and logging/config resources
-- `policies/scps`
-  - SCP policy documents used by AWS Organizations
-- `scripts/destroy.sh`
-  - Helper destroy script if you choose to use it
-- `destroy.sh`
-  - Additional destroy helper in the repo root
+Current policies include controls for:
 
-## Prerequisites
+- region restrictions
+- CloudTrail protection
+- AWS Config protection
+- GuardDuty protection
+- preventing organization departure
+- restricting root usage
+- preventing IAM role deletion
+- EC2 instance type restrictions
+- selected encryption-related controls
 
-Before using this project, make sure you have:
+Because AWS Organizations enforces a maximum number of SCP attachments per target, the policy layout is intentionally distributed across the organization root and specific OUs rather than attaching every policy to the root.
 
-- Terraform `>= 1.5`
-- AWS CLI installed and configured
-- An AWS CLI profile named `management`
-- Sufficient permissions in the management account to:
-  - manage AWS Organizations
-  - create and attach SCPs
-  - create member accounts
-  - create IAM roles and attach managed policies
-  - create CloudTrail and AWS Config resources
-- Permission to assume:
-  - `arn:aws:iam::<audit-account-id>:role/OrganizationAccountAccessRole`
+## Security and Logging Design
 
-## AWS Credential Expectations
+The intended service flow is:
 
-This project assumes the default management provider is configured like this:
+- the management account owns the AWS Organization and orchestrates provisioning
+- the audit account serves as the central destination for log storage
+- the management account creates the organization CloudTrail trail
+- member accounts are accessed through `OrganizationAccountAccessRole`
+- GuardDuty is enabled within member accounts
+- AWS Config is enabled within member accounts and aggregated centrally
 
-```hcl
-provider "aws" {
-  region  = "us-east-1"
-  profile = "management"
-}
-```
+The module code for logging and security is present and wired into the root configuration. The remaining operational dependency is AWS service readiness in the newly created child accounts.
 
-It also assumes the management profile can assume into the audit account using:
+## Repository Layout
 
-```hcl
-provider "aws" {
-  alias   = "audit"
-  region  = "us-east-1"
-  profile = "management"
+- [main.tf](aws-landing-zone/main.tf)
+  Root module wiring, providers, and module orchestration.
+- [variables.tf](aws-landing-zone/variables.tf)
+  Root input variables for organization reuse, region, accounts, and phase-two account IDs.
+- [outputs.tf](aws-landing-zone/outputs.tf)
+  Root outputs for organization and account identifiers plus centralized logging output when phase two is enabled.
+- [versions.tf](aws-landing-zone/versions.tf)
+  Terraform and provider version declarations.
+- [tests/main.tftest.hcl](aws-landing-zone/tests/main.tftest.hcl)
+  Terraform test assertions for the root module.
+- [modules/organization](aws-landing-zone/modules/organization)
+  Organization and OU management.
+- [modules/accounts](aws-landing-zone/modules/accounts)
+  Member account creation.
+- [modules/scp](aws-landing-zone/modules/scp)
+  SCP creation and attachment logic.
+- [modules/logging](aws-landing-zone/modules/logging)
+  Central S3 audit bucket and organization CloudTrail resources.
+- [modules/security](aws-landing-zone/modules/security)
+  GuardDuty, AWS Config, and baseline Config rules.
+- [ERROR_NOTES.md](aws-landing-zone/ERROR_NOTES.md)
+  Detailed troubleshooting history, resolved issues, and current blockers.
 
-  assume_role {
-    role_arn = "arn:aws:iam::<audit-account-id>:role/OrganizationAccountAccessRole"
-  }
-}
-```
+## Credentials and Access Model
 
-If your credentials are expired, invalid, or do not have `sts:AssumeRole` access into the audit account, `terraform plan` and `terraform apply` will fail.
+The root AWS provider now uses the default AWS credential chain rather than a hardcoded CLI profile.
+
+That means Terraform can authenticate through:
+
+- the default AWS CLI profile
+- environment variables
+- federated or temporary credentials
+- an attached IAM role in a supported runtime
+
+Cross-account operations use aliased providers that assume into the member accounts through `OrganizationAccountAccessRole`.
+
+## Inputs
+
+The root module accepts these primary inputs:
+
+- `audit_account_email`
+- `workload_account_email`
+- `management_region`
+- `existing_organization_id`
+- `existing_audit_account_id`
+- `existing_workload_account_id`
+
+The `existing_*_account_id` variables are used to enable the phase-two cross-account modules once the member accounts exist and are reachable.
+
+## Outputs
+
+The root module currently exports:
+
+- `organization_id`
+- `audit_account_id`
+- `workload_account_id`
+- `central_logs_bucket`
+
+`central_logs_bucket` is populated only when the phase-two logging module is enabled.
+
+## Verified Working Areas
+
+The following parts of the project have been verified successfully in the current repository state:
+
+- reusing an existing AWS Organization
+- creating and managing organizational units
+- creating member accounts through AWS Organizations
+- applying SCPs to the organization root and OUs
+- assuming into the created member accounts through `OrganizationAccountAccessRole`
+- successful `terraform init`
+- successful `terraform validate`
+- successful `terraform plan`
+
+These are meaningful landing-zone capabilities and represent the working foundation of the project.
+
+## Full Blocker
+
+The current end-to-end blocker is AWS service activation inside freshly created child accounts.
+
+Although the newly created accounts are active in AWS Organizations and cross-account role assumption works, AWS has not consistently allowed immediate use of some services in those member accounts. In testing, this affected:
+
+- S3 in the audit account
+- GuardDuty in child accounts
+- AWS Config in child accounts
+
+As a result, the Terraform code for centralized logging and security services can plan correctly but may fail to apply until AWS fully activates those services in the new accounts.
+
+This is the primary outstanding limitation for full automation at the moment.
 
 ## How to Use
 
-### 1. Initialize Terraform
+### 1. Initialize
 
 ```bash
 terraform init
 ```
 
-### 2. Review the Planned Changes
+### 2. Validate
+
+```bash
+terraform validate
+```
+
+### 3. Review the plan
 
 ```bash
 terraform plan
 ```
 
-### 3. Apply the Configuration
+### 4. Apply
 
 ```bash
 terraform apply
 ```
 
-### 4. Inspect Outputs
+### 5. Inspect outputs
 
 ```bash
 terraform output
 ```
 
-## Important Outputs
+## Recommended Operating Pattern
 
-The project exports several useful values in `outputs.tf`, including:
+For real-world use, the cleanest approach is:
 
-- `organization_id`
-- `organizational_units`
-- `scp_ids`
-- `member_accounts`
-- `member_account_emails`
-- `central_logs_bucket`
-- `cloudtrail_arn`
-- `config_aggregator_name`
+1. Bootstrap the organization, OUs, accounts, and SCPs.
+2. Confirm the target member accounts are fully accessible and service-ready.
+3. Enable logging and security resources through the same repository using the existing account IDs.
 
-## Operational Notes
+This keeps the implementation honest to AWS Organizations behavior while still preserving a single cohesive codebase.
 
-### CloudTrail and S3 Bucket Policy
+## Professional Notes
 
-The organization CloudTrail trail depends on a correctly configured S3 bucket policy in the audit account. CloudTrail validates the bucket policy before trail creation, so missing permissions such as:
+This project should be understood as a serious infrastructure engineering exercise rather than a toy example. It demonstrates:
 
-- `s3:GetBucketAcl`
-- `s3:PutObject`
+- AWS Organizations design
+- Terraform module composition
+- governance enforcement with SCPs
+- cross-account provider design
+- phased landing-zone rollout strategy
+- honest handling of real AWS operational constraints
 
-will cause trail creation to fail.
+The codebase is deliberately practical: it does not hide the fact that some cloud automation problems are shaped as much by provider readiness and account lifecycle behavior as by Terraform itself.
 
-### AWS Config Delivery Requirements
+## Limitations
 
-AWS Config requires access to the delivery bucket. The bucket policy must permit:
+This repository is not yet a fully production-ready enterprise landing zone. It currently does not include:
 
-- `s3:GetBucketAcl`
-- `s3:ListBucket`
-- `s3:PutObject`
+- a remote Terraform backend
+- CI/CD validation pipelines
+- account vending workflows beyond the two current member accounts
+- mature operational runbooks for partial-failure recovery
+- service readiness orchestration for newly created child accounts
 
-for the `config.amazonaws.com` service principal.
+These are natural next steps for further hardening.
 
-### Cross-Account Access
+## Documentation
 
-The logging bucket is created in the audit account, not the management account. That means:
+Project troubleshooting and the full record of issues encountered during implementation are intentionally kept out of the README and tracked in [ERROR_NOTES.md](aws-landing-zone/ERROR_NOTES.md).
 
-- the audit account must exist
-- `OrganizationAccountAccessRole` must be present in the audit account
-- the management account credentials must be allowed to assume that role
+## Summary
 
-If any of these are not true, the audit logging portion of the Terraform configuration will fail.
+This repository provides a strong Terraform foundation for an AWS landing zone:
 
-### AWS Organizations Account Limits
+- organization structure works
+- account provisioning works
+- governance guardrails work
+- cross-account access works
+- the logging and security implementation is present and structured correctly
 
-AWS Organizations enforces account quotas. If you try to create more member accounts than your quota allows, Terraform will fail with an AWS Organizations constraint violation.
-
-## Known Limitations
-
-This project is functional, but it is still a simplified landing-zone implementation. Some limitations to keep in mind:
-
-- Everything is currently defined in a single `main.tf` file rather than split into reusable modules
-- Some values are hardcoded, including:
-  - AWS region
-  - account names
-  - account emails
-  - certain policy descriptions
-- No remote backend is configured yet for Terraform state
-- No Terraform variables are defined yet for environment-specific customization
-- No CI/CD workflow is included for validation or deployment
-- The configuration assumes a specific IAM access pattern for the audit account
-
-## Recommended Improvements
-
-If you continue developing this project, good next steps would be:
-
-1. Split the configuration into modules:
-   - organizations
-   - accounts
-   - SCPs
-   - logging
-   - config
-2. Add `variables.tf` for:
-   - region
-   - profile
-   - account emails
-   - approved regions
-3. Add a remote backend such as S3 with DynamoDB locking
-4. Add validation checks and formatting in CI
-5. Parameterize or template repeated policy logic
-6. Introduce environment-aware naming conventions
-
-## Disclaimers
-
-### General Disclaimer
-
-This project is provided as a learning and starter implementation. It is not a complete enterprise-grade landing zone and should not be treated as production-ready without further hardening, review, and testing.
-
-### Security Disclaimer
-
-Although this project applies governance controls such as SCPs, centralized logging, and AWS Config, it does not guarantee a secure AWS environment by itself. Security depends on additional controls, including:
-
-- IAM least privilege
-- network controls
-- encryption strategy
-- centralized monitoring and alerting
-- incident response processes
-- patching and vulnerability management
-
-### Production Use Disclaimer
-
-Do not apply this configuration directly to a production organization without:
-
-- reviewing every SCP carefully
-- validating account creation strategy
-- confirming CloudTrail and Config requirements
-- testing in a non-production AWS Organization first
-- verifying cross-account trust and IAM permissions
-
-### Cost Disclaimer
-
-This project can create billable AWS resources, including:
-
-- AWS member accounts
-- S3 storage
-- CloudTrail logging
-- AWS Config recorders and aggregators
-
-Running this Terraform code may incur AWS charges.
-
-### State Management Disclaimer
-
-If you are using local Terraform state, you are taking on operational risk. Local state is easier to lose, corrupt, or accidentally commit. For collaborative or long-lived use, move the state to a remote backend.
-
-### Destructive Operations Disclaimer
-
-Be careful with `terraform destroy` and any custom destroy scripts. Deleting organizations, accounts, audit buckets, or logging resources can be slow, restricted, or partially blocked by AWS service constraints and retention behavior.
-
-## Conclusion
-
-AWS Landing Zone gives you a practical starting point for organizing accounts, applying governance controls, and centralizing audit visibility in AWS. It is a strong foundation for learning and iteration, but it should be evolved further before being relied on as a full production landing-zone implementation.
+The remaining gap is not missing intent or missing code. It is AWS child-account service readiness for full phase-two enablement.
