@@ -29,7 +29,7 @@ The current implementation is built around five functional areas:
 
 ## Current Architecture
 
-The root configuration in [main.tf](/home/jabu/Documents/AWS-Projects/aws-landing-zone/main.tf) coordinates a two-stage operating model:
+The root configuration in [main.tf](/aws-landing-zone/main.tf) coordinates a two-stage operating model:
 
 1. Organization and governance bootstrap
    - reuse or create the organization
@@ -62,7 +62,7 @@ This keeps the landing-zone footprint small while still demonstrating multi-acco
 
 ## Governance Controls
 
-The repository includes SCP documents under [policies/scps](/home/jabu/Documents/AWS-Projects/aws-landing-zone/policies/scps) and applies governance controls through the `scp` module.
+The repository includes SCP documents under [policies/scps](/aws-landing-zone/policies/scps) and applies governance controls through the `scp` module.
 
 Current policies include controls for:
 
@@ -93,27 +93,27 @@ The module code for logging and security is present and wired into the root conf
 
 ## Repository Layout
 
-- [main.tf](aws-landing-zone/main.tf)
+- [main.tf](/aws-landing-zone/main.tf)
   Root module wiring, providers, and module orchestration.
-- [variables.tf](aws-landing-zone/variables.tf)
+- [variables.tf](/aws-landing-zone/variables.tf)
   Root input variables for organization reuse, region, accounts, and phase-two account IDs.
-- [outputs.tf](aws-landing-zone/outputs.tf)
+- [outputs.tf](/aws-landing-zone/outputs.tf)
   Root outputs for organization and account identifiers plus centralized logging output when phase two is enabled.
-- [versions.tf](aws-landing-zone/versions.tf)
+- [versions.tf](/aws-landing-zone/versions.tf)
   Terraform and provider version declarations.
-- [tests/main.tftest.hcl](aws-landing-zone/tests/main.tftest.hcl)
+- [tests/main.tftest.hcl](/aws-landing-zone/tests/main.tftest.hcl)
   Terraform test assertions for the root module.
-- [modules/organization](aws-landing-zone/modules/organization)
+- [modules/organization](/aws-landing-zone/modules/organization)
   Organization and OU management.
-- [modules/accounts](aws-landing-zone/modules/accounts)
+- [modules/accounts](/aws-landing-zone/modules/accounts)
   Member account creation.
-- [modules/scp](aws-landing-zone/modules/scp)
+- [modules/scp](/aws-landing-zone/modules/scp)
   SCP creation and attachment logic.
-- [modules/logging](aws-landing-zone/modules/logging)
+- [modules/logging](/aws-landing-zone/modules/logging)
   Central S3 audit bucket and organization CloudTrail resources.
-- [modules/security](aws-landing-zone/modules/security)
+- [modules/security](/aws-landing-zone/modules/security)
   GuardDuty, AWS Config, and baseline Config rules.
-- [ERROR_NOTES.md](aws-landing-zone/ERROR_NOTES.md)
+- [ERROR_NOTES.md](/aws-landing-zone/ERROR_NOTES.md)
   Detailed troubleshooting history, resolved issues, and current blockers.
 
 ## Credentials and Access Model
@@ -251,7 +251,7 @@ These are natural next steps for further hardening.
 
 ## Documentation
 
-Project troubleshooting and the full record of issues encountered during implementation are intentionally kept out of the README and tracked in [ERROR_NOTES.md](aws-landing-zone/ERROR_NOTES.md).
+Project troubleshooting and the full record of issues encountered during implementation are intentionally kept out of the README and tracked in [ERROR_NOTES.md](/aws-landing-zone/ERROR_NOTES.md).
 
 ## Summary
 
